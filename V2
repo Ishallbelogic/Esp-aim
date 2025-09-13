@@ -1,0 +1,150 @@
+--// Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+--// UI Setup
+local ScreenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+ScreenGui.ResetOnSpawn = false
+
+local function createButton(text, order)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(0, 120, 0, 30)
+    button.Position = UDim2.new(0, 10, 0, 10 + (35 * (order - 1)))
+    button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.Text = text
+    button.Font = Enum.Font.GothamBold
+    button.TextScaled = true
+    button.AutoButtonColor = true
+    button.Parent = ScreenGui
+
+    -- Smooth edges
+    local corner = Instance.new("UICorner", button)
+    corner.CornerRadius = UDim.new(0, 8)
+
+    -- Make draggable
+    button.Active = true
+    button.Draggable = true
+
+    return button
+end
+
+local autoAimBtn = createButton("Auto Aim: OFF", 1)
+local espBtn = createButton("ESP: OFF", 2)
+
+--// Toggles
+local autoAimEnabled = false
+local espEnabled = false
+
+--// Ignore lists
+local ignoreNPCs = {
+    ["merchant"] = true,
+    ["broker"] = true,
+    ["vulture merchant"] = true
+}
+
+local ignoreContainers = {
+    "trunk", "locker", "case", "first aid box", "cash register",
+    "bunker crate", "vault", "access denied", "golden crate",
+    "rebel crate", "cargo crate", "vulture crate", "blue crate",
+    "purple crate", "sentry crate", "military crate",
+    "detection contraband", "safe"
+}
+
+--// Auto Aim Logic
+local function getClosestNPC()
+    local closest, dist = nil, math.huge
+    for _, npc in pairs(workspace:GetDescendants()) do
+        if npc:IsA("Model") and npc:FindFirstChild("HumanoidRootPart") then
+            local name = npc.Name:lower()
+            if not ignoreNPCs[name] then
+                local pos, onScreen = Camera:WorldToViewportPoint(npc.HumanoidRootPart.Position)
+                if onScreen then
+                    local mag = (Vector2.new(pos.X, pos.Y) - UserInputService:GetMouseLocation()).Magnitude
+                    if mag < dist then
+                        closest, dist = npc, mag
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+RunService.RenderStepped:Connect(function()
+    if autoAimEnabled then
+        local npc = getClosestNPC()
+        if npc then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, npc.HumanoidRootPart.Position)
+        end
+    end
+end)
+
+--// ESP Logic
+local function hasIgnoredName(name)
+    for _, bad in ipairs(ignoreContainers) do
+        if string.find(name, bad) then
+            return true
+        end
+    end
+    return false
+end
+
+task.spawn(function()
+    while task.wait(1) do
+        -- Clear old ESP
+        for _, v in pairs(workspace:GetDescendants()) do
+            if v:FindFirstChild("BillboardGui") then
+                v.BillboardGui:Destroy()
+            end
+        end
+
+        if espEnabled then
+            for _, obj in pairs(workspace:GetDescendants()) do
+                if obj:IsA("Model") or obj:IsA("Part") then
+                    local name = obj.Name:lower()
+
+                    if not hasIgnoredName(name) then
+                        if name:find("duffle") or name:find("bag") or name:find("container") or name:find("supply drop") or name:find("flare") then
+                            if not obj:FindFirstChild("BillboardGui") then
+                                local adornee = obj:FindFirstChildWhichIsA("BasePart")
+                                if adornee then
+                                    local billboard = Instance.new("BillboardGui")
+                                    billboard.Size = UDim2.new(0, 200, 0, 50)
+                                    billboard.Adornee = adornee
+                                    billboard.AlwaysOnTop = true
+
+                                    local label = Instance.new("TextLabel", billboard)
+                                    label.Size = UDim2.new(1, 0, 1, 0)
+                                    label.BackgroundTransparency = 1
+                                    label.Text = obj.Name
+                                    label.TextColor3 = Color3.fromRGB(0, 255, 0)
+                                    label.TextStrokeTransparency = 0.2
+                                    label.Font = Enum.Font.GothamBold
+                                    label.TextScaled = true
+
+                                    billboard.Parent = obj
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+--// Button Functions
+autoAimBtn.MouseButton1Click:Connect(function()
+    autoAimEnabled = not autoAimEnabled
+    autoAimBtn.Text = autoAimEnabled and "Auto Aim: ON" or "Auto Aim: OFF"
+end)
+
+espBtn.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    espBtn.Text = espEnabled and "ESP: ON" or "ESP: OFF"
+end)
